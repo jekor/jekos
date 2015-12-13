@@ -23,7 +23,7 @@ executable kernel
                        asn1-encoding,
                        asn1-types,
                        attoparsec,
-                       base >=4.7 && <4.8,
+                       base == 4.8.*,
                        base64-bytestring,
                        bytestring,
                        containers,

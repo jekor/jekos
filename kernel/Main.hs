@@ -6,7 +6,7 @@
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Aeson as A
-import Data.Attoparsec.ByteString.Char8 (parseOnly, stringCI, skipSpace, (.*>), (<*.), takeWhile1)
+import Data.Attoparsec.ByteString.Char8 (parseOnly, stringCI, skipSpace, takeWhile1)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64 as Base64
 import Data.ByteString.Lazy (fromStrict, toStrict)
@@ -37,7 +37,7 @@ main = do
   -- by some startup script before this program is run).
   -- The public key should be a DER-encoded RSA public key.
   publicKey <- publicKeyFromDER `fmap` B.readFile "/var/publickey"
-  run 8080 (corsAllowAll (verifySignature publicKey rootApp))
+  run 13405 (corsAllowAll (verifySignature publicKey rootApp))
 
 -- Read an RSA public key in DER format.
 publicKeyFromDER :: B.ByteString -> C.PublicKey
@@ -79,7 +79,7 @@ verifySignature publicKey app request sendResponse = do
          stringCI "JEKOS-SIG" >> skipSpace
          stringCI "signature" >> skipSpace
          stringCI "=" >> skipSpace
-         base64 <- "\"" .*> takeWhile1 (/= '"') <*. "\""
+         base64 <- "\"" *> takeWhile1 (/= '"') <* "\""
          return (Base64.decodeLenient base64)
 
 -- Allow everything.
