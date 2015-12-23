@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Aeson as A
@@ -17,9 +18,12 @@ import qualified Data.Text.IO as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import GHC.Generics
 import Network.Wai
+import Network.Wai.Middleware.Static (staticPolicy', initCaching, CachingStrategy(..), addBase, policy, (<|>))
 import Network.HTTP.Types (hAuthorization, status200, status401, hContentType, methodOptions)
 import Network.Wai.Handler.Warp (run)
 import Servant
+import System.Environment (getArgs, getProgName)
+import System.IO (hPutStrLn, stderr)
 
 import qualified Crypto.PubKey.HashDescr as C
 import qualified Crypto.PubKey.RSA.PKCS15 as C
@@ -30,14 +34,26 @@ import qualified Data.ASN1.Encoding as ASN
 import qualified Data.ASN1.BinaryEncoding as ASN
 import qualified Data.ASN1.Types as ASN
 
+import Debug.Trace (traceShow)
+
 main :: IO ()
 main = do
-  -- We expect the public key to be available at a fixed location on the filesystem.
-  -- This needs to be done before we can serve requests (it's presumed to be handled
-  -- by some startup script before this program is run).
-  -- The public key should be a DER-encoded RSA public key.
-  publicKey <- publicKeyFromDER `fmap` B.readFile "/var/publickey"
-  run 13405 (corsAllowAll (verifySignature publicKey rootApp))
+  args <- getArgs
+  case args of
+    [uiDir] -> do
+      -- We expect the public key to be available at a fixed location
+      -- on the filesystem.  This needs to be done before we can serve
+      -- requests (it's presumed to be handled by some startup script
+      -- before this program is run).  The public key should be a
+      -- DER-encoded RSA public key.
+      publicKey <- publicKeyFromDER `fmap` B.readFile "/var/publickey"
+      cache <- initCaching PublicStaticCaching
+      run 13405 (static cache uiDir (corsAllowAll (verifySignature publicKey rootApp)))
+    _ -> do
+      progName <- getProgName
+      hPutStrLn stderr ("Usage: " ++ progName ++ " ui-dir")
+ where static cache uiDir = staticPolicy' cache (policy (indexFile uiDir) <|> addBase uiDir)
+       indexFile uiDir s = traceShow s (if s == "" then Just (uiDir ++ "/index.html") else Nothing)
 
 -- Read an RSA public key in DER format.
 publicKeyFromDER :: B.ByteString -> C.PublicKey

@@ -42,7 +42,7 @@
     window.crypto.subtle.sign('RSASSA-PKCS1-v1_5', privateKey, encoded.buffer).
       then(function (sig) {
         var xhr = new XMLHttpRequest();
-        xhr.open(method, 'http://' + address + url, true);
+        xhr.open(method, 'http://' + address + ':13405' + url, true);
         xhr.setRequestHeader('Authorization', 'JEKOS-SIG signature="' + base64FromArrayBuffer(sig) + '"');
         xhr.onload = function () {
           callback(xhr.response);
@@ -132,9 +132,16 @@
                     output.appendChild(document.createTextNode(data.InstanceId));
                     output.appendChild(document.createElement('br'));
                     output.appendChild(document.createTextNode('Asking the kernel for its time ... '));
-                    syscall(data.PublicDnsName + ':13405', 'GET', '/time', '', key.privateKey, function (time) {
+                    syscall(data.PublicDnsName, 'GET', '/time', '', key.privateKey, function (time) {
                       output.appendChild(document.createTextNode((new Date(parseInt(time, 10) * 1000)).toLocaleString()));
                       output.appendChild(document.createElement('br'));
+                      output.appendChild(document.createElement('br'));
+                      output.appendChild(document.createTextNode('Your JekOS system is now reachable at '));
+                      var a = document.createElement('a');
+                      a.href = 'http://' + data.PublicDnsName + ':13405/';
+                      a.appendChild(document.createTextNode(data.PublicDnsName));
+                      output.appendChild(a);
+                      output.appendChild(document.createTextNode('. Make sure to download your private key first or you won''t be able to log in.');
                     });
                   });
                 }).
