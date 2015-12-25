@@ -20,9 +20,11 @@ import GHC.Generics
 import Network.Wai
 import Network.Wai.Middleware.Static (staticPolicy', initCaching, CachingStrategy(..), addBase, policy, (<|>))
 import Network.HTTP.Types (hAuthorization, status200, status401, hContentType, methodOptions)
-import Network.Wai.Handler.Warp (run)
+import Network.Wai.Handler.Warp
+import Network.Wai.Handler.WarpTLS
 import Servant
 import System.Environment (getArgs, getProgName)
+import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
 import qualified Crypto.PubKey.HashDescr as C
@@ -34,13 +36,14 @@ import qualified Data.ASN1.Encoding as ASN
 import qualified Data.ASN1.BinaryEncoding as ASN
 import qualified Data.ASN1.Types as ASN
 
-import Debug.Trace (traceShow)
+-- TODO: If there are errors during initialization, we need to continue starting up and provide the list of errors on the interface front page. We can also get assistance resolving them from the installer (assuming we have at least managed to read the public key).
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
     [uiDir] -> do
+      domain <- readFile "/var/domain"
       -- We expect the public key to be available at a fixed location
       -- on the filesystem.  This needs to be done before we can serve
       -- requests (it's presumed to be handled by some startup script
@@ -48,12 +51,14 @@ main = do
       -- DER-encoded RSA public key.
       publicKey <- publicKeyFromDER `fmap` B.readFile "/var/publickey"
       cache <- initCaching PublicStaticCaching
-      run 13405 (static cache uiDir (corsAllowAll (verifySignature publicKey rootApp)))
+      runTLS (pems domain) (setPort 13405 defaultSettings) (static cache uiDir (corsAllowAll (verifySignature publicKey rootApp)))
     _ -> do
       progName <- getProgName
       hPutStrLn stderr ("Usage: " ++ progName ++ " ui-dir")
  where static cache uiDir = staticPolicy' cache (policy (indexFile uiDir) <|> addBase uiDir)
-       indexFile uiDir s = traceShow s (if s == "" then Just (uiDir ++ "/index.html") else Nothing)
+       indexFile uiDir s = if s == "" then Just (uiDir ++ "/index.html") else Nothing
+       pems domain = tlsSettingsChain (domainRoot domain </> "cert.pem") [domainRoot domain </> "fullchain.pem"] (domainRoot domain </> "key.pem")
+       domainRoot domain = "/var/letsencrypt" </> domain
 
 -- Read an RSA public key in DER format.
 publicKeyFromDER :: B.ByteString -> C.PublicKey
