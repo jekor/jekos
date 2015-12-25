@@ -1,0 +1,55 @@
+@require 'lib'
+
+html, body
+  height: 100%
+
+body
+  margin: 0
+
+@keyframes animatedBackground
+  from { transform: translate3d(0px, 0px, 0px); }
+  to { transform: translate3d(-100000%, 0px, 0px); }
+
+#login-screen
+  width: 100%
+  height: 100%
+  overflow: hidden
+
+#world
+  height: 100%
+  width: 100000%
+  background: url(img/bare-map-green.png)
+  background-size: auto 100%
+  background-repeat: repeat-x
+  animation: animatedBackground 50000000s linear infinite
+
+#login
+  width: 10em
+  height: 11em
+  position: absolute
+  top: 0
+  bottom: 0
+  left: 0
+  right: 0
+  margin: auto
+
+#lock
+  background: url(img/lock-white.svg)
+  background-size: cover
+  width: 8em
+  height: 8em
+  margin-left-right: auto
+
+#load-key
+  margin-top: 1em
+  font-size: large
+  width: 100%
+  height: 2em
+
+#system-info
+  font-family: 'Lucida Console', Monaco, monospace
+  font-size: small
+  color: white
+  position: absolute
+  right: 1em
+  bottom: 1em

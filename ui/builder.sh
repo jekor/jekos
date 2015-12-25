@@ -1,13 +1,13 @@
 source $stdenv/setup
 
-mkdir $out
+mkdir -p $out
 cd $src
 
 cp index.html $out/index.html
 
 pushd css
 
-cat <(stylus < common.styl) <(stylus < appstore.styl) > $out/bundle.css
+cat <(stylus < common.styl) <(stylus < login.styl) <(stylus < appstore.styl) > $out/bundle.css
 
 popd
 
@@ -22,3 +22,5 @@ pushd js
 cp bundle.js $out/bundle.js
 
 popd
+
+cp -a img $out/

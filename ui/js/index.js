@@ -1,14 +1,35 @@
-// TODO: Provide an method to import private key.
+var privateKey = null;
 
-var appStore = require('./lib/appstore');
+var keyFileInput = document.getElementById('key-file');
+var keyFileButton = document.getElementById('load-key');
 
-var apps = [{"name":"hello","description":"This is the GNU Hello World program. It outputs a greeting and requires no additional resources."},{"name":"nginx","description":"the nginx web server"},{"name":"postgresql","description":"a relational database"}];
+keyFileInput.addEventListener('change', function (event) {
+  var reader = new FileReader();
+  reader.onload = function (event) {
+    console.log(reader.result);
+    window.crypto.subtle.importKey('pkcs8', reader.result, {name: 'RSASSA-PKCS1-v1_5', hash: {name: 'SHA-256'}}, true, ['sign'])
+      .then(function (key) {
+        privateKey = key;
+        document.body.removeChild(document.getElementById('login-screen'));
+        loadAppStore();
+      })
+      .catch(function (e) {
+        console.log(e);
+        alert('Failed to import private key.');
+      });
+  };
+  reader.readAsArrayBuffer(keyFileInput.files[0]);
+});
 
-var storeFront = appStore(apps);
-document.body.appendChild(storeFront);
+keyFileButton.addEventListener('click', function (event) {
+  keyFileInput.click();
+});
 
-// function installService (name) {
-//   console.log('Installing ${name}...');
-//   installableServices = installableServices.filter(x => x !== name);
-//   update();
-// }
+function loadAppStore() {
+  var appStore = require('./lib/appstore');
+
+  var apps = [{"name":"hello","description":"This is the GNU Hello World program. It outputs a greeting and requires no additional resources."},{"name":"nginx","description":"the nginx web server"},{"name":"postgresql","description":"a relational database"}];
+
+  var storeFront = appStore(apps);
+  document.body.appendChild(storeFront);
+}
