@@ -1,15 +1,15 @@
 (function () {
 
   // TODO: Switch to use promises or some other method to return the error.
-  function launchEC2 (base64PublicKey, privateKey, callback) {
+  function launchEC2 (name, userData, callback) {
     var ec2 = new AWS.EC2();
 
     // TODO: Provide an option to specify a keypair for those who want
     // to be able to SSH in to the instance and examine it.
-    ec2.runInstances({ ImageId: 'ami-51233f30'
+    ec2.runInstances({ ImageId: 'ami-ee31298f' // 'ami-51233f30'
                      , InstanceType: 't2.micro'
                      , MinCount: 1, MaxCount: 1
-                     , UserData: base64PublicKey
+                     , UserData: base64JSON(userData)
                      // TODO: Build the necessary security group if it doesn't exist.
                      , SecurityGroupIds: ['sg-34784b50']
                      }, function (err, data) {
@@ -17,6 +17,11 @@
         alert('Failed to create EC2 instance.');
       } else {
         var instanceId = data.Instances[0].InstanceId;
+        ec2.createTags({ Resources: [instanceId]
+                       , Tags: [{Key: 'Name', Value: name}] }, function(err, data) {
+          if (err) console.log(err, err.stack); // an error occurred
+          else     console.log(data);           // successful response
+        });
         ec2.waitFor('instanceStatusOk', {InstanceIds: [instanceId]}, function (err, data) {
           if (err) {
             alert('EC2 instance failed to start correctly.');
@@ -35,25 +40,32 @@
     });
   }
 
-  function syscall (address, method, url, body, privateKey, callback) {
-    var message = method.toLowerCase() + url + body;
+  function setPassword (domain, password, privateKey, callback) {
+    var message = 'PUT' + '/password' + password;
     var encoder = new TextEncoder('utf-8');
     var encoded = encoder.encode(message);
     window.crypto.subtle.sign('RSASSA-PKCS1-v1_5', privateKey, encoded.buffer).
       then(function (sig) {
         var xhr = new XMLHttpRequest();
-        xhr.open(method, 'http://' + address + ':13405' + url, true);
+        xhr.open('PUT', 'https://' + domain + '/password', true);
         xhr.setRequestHeader('Authorization', 'JEKOS-SIG signature="' + base64FromArrayBuffer(sig) + '"');
+        xhr.setRequestHeader('Content-Type', 'text/plain; charset=utf-8');
         xhr.onload = function () {
-          callback(xhr.response);
+          callback(xhr.status == 201);
         };
-        xhr.send(body);
+        xhr.send(password);
       }).
-      catch(function () {
+      catch(function (e) {
+        console.log(e);
         alert('Failed to sign request.');
       });
   }
 
+  // This only works with non-Unicode data.
+  function base64JSON (data) {
+    return btoa(JSON.stringify(data));
+  }
+  
   function base64FromArrayBuffer (buffer) {
       var binary = '';
       var bytes = new Uint8Array(buffer);
@@ -61,7 +73,7 @@
       for (var i = 0; i < len; i++) {
           binary += String.fromCharCode(bytes[i]);
       }
-      return window.btoa(binary);
+      return btoa(binary);
   }
 
   function arrayBufferFromBase64 (base64) {
@@ -92,6 +104,9 @@
         ec2: '2015-10-01'
       };
 
+      var subdomain = event.target.elements['subdomain'].value;
+      var password = event.target.elements['password'].value;
+
       var output = document.getElementById('output');
 
       // To launch an EC2 instance:
@@ -109,49 +124,56 @@
                                       ).
         then(function (newKey) {
           key = newKey;
-
+          
           // Allow the user to download the private key.
-          window.crypto.subtle.exportKey('pkcs8', key.privateKey).
-            then(function (rawKey) {
-              var url = URL.createObjectURL(new Blob([rawKey], {type: 'octet/stream'}));
-              var a = document.createElement('a');
-              a.href = url;
-              a.download = 'jekos-private-key';
-              a.appendChild(document.createTextNode('Download Private Key'));
-              output.appendChild(a);
-              output.appendChild(document.createElement('br'));
+          // window.crypto.subtle.exportKey('pkcs8', key.privateKey).
+          //   then(function (rawKey) {
+              // var url = URL.createObjectURL(new Blob([rawKey], {type: 'octet/stream'}));
+              // var a = document.createElement('a');
+              // a.href = url;
+              // a.download = 'jekos-private-key';
+              // a.appendChild(document.createTextNode('Download Private Key'));
+              // output.appendChild(a);
+              // output.appendChild(document.createElement('br'));
               // To read from OpenSSL:
               // openssl pkcs8 -inform DER -nocrypt -in keyfile
 
+              output.appendChild(document.createTextNode('done.'));
+              output.appendChild(document.createElement('br'));
               // Attach the public key to the EC2 instance.
               window.crypto.subtle.exportKey('spki', key.publicKey).
                 then(function (rawKey) {
                   output.appendChild(document.createTextNode('Launching EC2 instance (this can take a while, check your EC2 console to see progress) ... '));
                   // Encode the raw key as base64.
-                  launchEC2(base64FromArrayBuffer(rawKey), key.privateKey, function (data) {
+                  launchEC2(subdomain, {publicKey: base64FromArrayBuffer(rawKey), subdomain: subdomain}, function (data) {
                     output.appendChild(document.createTextNode(data.InstanceId));
                     output.appendChild(document.createElement('br'));
-                    output.appendChild(document.createTextNode('Asking the kernel for its time ... '));
-                    syscall(data.PublicDnsName, 'GET', '/time', '', key.privateKey, function (time) {
-                      output.appendChild(document.createTextNode((new Date(parseInt(time, 10) * 1000)).toLocaleString()));
-                      output.appendChild(document.createElement('br'));
-                      output.appendChild(document.createElement('br'));
-                      output.appendChild(document.createTextNode('Your JekOS system is now reachable at '));
-                      var a = document.createElement('a');
-                      a.href = 'http://' + data.PublicDnsName + ':13405/';
-                      a.appendChild(document.createTextNode(data.PublicDnsName));
-                      output.appendChild(a);
-                      output.appendChild(document.createTextNode('. Make sure to download your private key first or you won''t be able to log in.');
+                    output.appendChild(document.createTextNode('Setting password ... '));
+                    setPassword(subdomain + '.jekos.net', password, key.privateKey, function (success) {
+                      if (success) {
+                        output.appendChild(document.createTextNode('done.');
+                        output.appendChild(document.createElement('br'));
+                        output.appendChild(document.createElement('br'));
+                        output.appendChild(document.createTextNode('Your JekOS network is now reachable at '));
+                        var a = document.createElement('a');
+                        var url = 'https://' + subdomain + '.jekos.net/';
+                        a.href = url;
+                        a.appendChild(document.createTextNode(url));
+                        output.appendChild(a);
+                      } else {
+                        output.appendChild(document.createTextNode('failed to set password.'));
+                        // TODO: This could be for multiple reasons. Provide options from here.
+                      }
                     });
                   });
                 }).
                 catch(function () {
                   alert('Failed to export public key.');
                 });
-            }).
-            catch(function () {
-              alert('Failed to export private key.');
-            });
+            // }).
+            // catch(function () {
+            //   alert('Failed to export private key.');
+            // });
         }).
         catch(function () {
           alert('Failed to generate key pair.');

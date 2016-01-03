@@ -8,24 +8,33 @@ let
   jekosKernel = hpkgs.callPackage ../kernel { };
   ui = hpkgs.callPackage ../ui { uglify = pkgs.nodePackages.uglify-js;
                                  stylus = pkgs.nodePackages.stylus; };
-  certScript = builtins.toFile "fetchcert.sh" ''
+  fetch-cert = builtins.toFile "fetch-cert.sh" ''
+    set -euo pipefail
     openssl=$1
     python2=$2
     simp_le=$3
-    domain=$(cat /var/domain)
+
+    if [ ! -f /var/jekos/domain ]; then
+      echo "Missing domain." >&2
+      exit 1
+    fi
+    domain=$(cat /var/jekos/domain)
+    echo "domain: $domain" >&2
+    mkdir -p /var/letsencrypt
     if [ ! -f /var/letsencrypt/$domain/cert.pem ]; then
       echo "No certificate found. Requesting one."
       mkdir -p /var/letsencrypt/$domain/www
-      cd /var/letsencrypt/$domain/www && $python2 -m SimpleHTTPServer 80 &
+      cd /var/letsencrypt/$domain/www && $python2/bin/python -m SimpleHTTPServer 80 &
       pid=$!
       cd /var/letsencrypt/$domain
-      $simp_le --server https://acme-v01.api.letsencrypt.org/directory -d $domain:/var/letsencrypt/$domain/www -f cert.pem -f fullchain.pem -f key.pem
+      # $simp_le/bin/simp_le --server https://acme-v01.api.letsencrypt.org/directory -d $domain:/var/letsencrypt/$domain/www -f cert.pem -f fullchain.pem -f key.pem
+      $simp_le/bin/simp_le --server https://acme-staging.api.letsencrypt.org/directory -d $domain:/var/letsencrypt/$domain/www -f cert.pem -f fullchain.pem -f key.pem
       kill $pid
     else
       # TODO: Check that the domain matches the cert for cases when
       # the domain has changed (e.g. an EC2 instance was stopped and
       # then started.
-      if ! $openssl x509 -in /var/letsencrypt/$domain/cert.pem -checkend 86400 -noout; then
+      if ! $openssl/bin/openssl x509 -in /var/letsencrypt/$domain/cert.pem -checkend 86400 -noout; then
         echo "Certificate expired. Trying to renew."
       fi
     fi
@@ -47,19 +56,22 @@ in
     networking.interfaces.lo.ip4 = [
       { address = "127.0.0.1"; prefixLength = 8; }
     ];
-    networking.firewall.allowedTCPPorts = [ 22 80 13405 ];
+    networking.firewall.allowedTCPPorts = [ 22 80 443 ];
 
-    systemd.services.fetchcert = {
+    systemd.services.fetch-cert = {
       wantedBy = [ "multi-user.target" ];
-      after = [ "fetchdomain.service" ];
+      wants = [ "update-dns.service" ];
+      after = [ "update-dns.service" ];
       serviceConfig = {
-        ExecStart = ''${tpkgs.bash}/bin/bash ${certScript} ${tpkgs.openssl}/bin/openssl ${tpkgs.python2}/bin/python ${tpkgs.simp_le}/bin/simp_le'';
+        Type = "oneshot";
+        ExecStart = ''${tpkgs.bash}/bin/bash ${fetch-cert} ${tpkgs.openssl} ${tpkgs.python2} ${tpkgs.simp_le}'';
       };
     };
-    
-    systemd.services.jekoskernel = {
+
+    systemd.services.jekos-kernel = {
       wantedBy = [ "multi-user.target" ];
-      after = [ "fetchkey.service" "fetchcert.service" ];
+      wants = [ "fetch-cert.service" ];
+      after = [ "fetch-cert.service" ];
       serviceConfig = {
         ExecStart = ''${jekosKernel}/bin/kernel ${ui}'';
       };

@@ -6,14 +6,20 @@
   <body>
     <h1>JekOS Installer</h1>
     <form id="install-form">
+      <label for="aws-region">AWS Region:</label>
+      <input id="aws-region" name="aws-region" type="text" value="us-west-2" required />
+      <br />
       <label for="aws-access-key">AWS Access Key ID:</label>
-      <input id="aws-access-key" name="aws-access-key" type="text" required />
+      <input id="aws-access-key" name="aws-access-key" type="text" required autofocus />
       <br />
       <label for="aws-secret-key">AWS Secret Access Key:</label>
       <input id="aws-secret-key" name="aws-secret-key" type="password" required />
       <br />
-      <label for="aws-region">AWS Region:</label>
-      <input id="aws-region" name="aws-region" type="text" value="us-west-2" required />
+      <label for="subdomain">Name your network:</label>
+      <input id="subdomain" name="subdomain" type="text" required />
+      <br />
+      <label for="password">Set a password:</label>
+      <input id="password" name="password" type="password" required />
       <br />
       <input type="submit" value="Install" />
     </form>

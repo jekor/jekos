@@ -3,7 +3,7 @@ source $stdenv/setup
 mkdir -p $out
 cd $src
 
-cp index.html $out/index.html
+cp login.html $out/login.html
 
 pushd css
 

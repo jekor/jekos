@@ -6,12 +6,13 @@ var keyFileButton = document.getElementById('load-key');
 keyFileInput.addEventListener('change', function (event) {
   var reader = new FileReader();
   reader.onload = function (event) {
-    console.log(reader.result);
     window.crypto.subtle.importKey('pkcs8', reader.result, {name: 'RSASSA-PKCS1-v1_5', hash: {name: 'SHA-256'}}, true, ['sign'])
       .then(function (key) {
         privateKey = key;
         document.body.removeChild(document.getElementById('login-screen'));
-        loadAppStore();
+        // loadAppStore();
+        var kernel = require('./lib/kernel');
+        kernel.syscall('PUT', '/password', 'weak', privateKey, function (body) {console.log(body);});
       })
       .catch(function (e) {
         console.log(e);
