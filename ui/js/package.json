@@ -14,7 +14,8 @@
     ]
   },
   "dependencies": {
-    "virtual-dom": "^2.1.0"
+    "terminal.js": "^1.0.6",
+    "term.js": "^0.0.7"
   },
   "devDependencies": {
     "babelify": "^7.2.0",

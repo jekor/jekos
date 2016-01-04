@@ -1,9 +1,10 @@
 { mkDerivation, aeson, asn1-encoding, asn1-types, attoparsec, base
 , base64-bytestring, bcrypt, blaze-builder, bytestring, containers
 , cookie, crypto-pubkey, crypto-pubkey-types, data-default
-, directory, either, filepath, http-types, servant-server, SHA
-, stdenv, text, time, transformers, wai, wai-cors
-, wai-middleware-static, warp, warp-tls
+, directory, either, filepath, http-types, network, posix-pty
+, servant-server, SHA, stdenv, text, time, tls, transformers, wai
+, wai-cors, wai-middleware-static, wai-websockets, warp, warp-tls
+, websockets
 }:
 mkDerivation {
   pname = "kernel";
@@ -15,8 +16,9 @@ mkDerivation {
     aeson asn1-encoding asn1-types attoparsec base base64-bytestring
     bcrypt blaze-builder bytestring containers cookie crypto-pubkey
     crypto-pubkey-types data-default directory either filepath
-    http-types servant-server SHA text time transformers wai wai-cors
-    wai-middleware-static warp warp-tls
+    http-types network posix-pty servant-server SHA text time tls
+    transformers wai wai-cors wai-middleware-static wai-websockets warp
+    warp-tls websockets
   ];
   license = stdenv.lib.licenses.unfree;
 }

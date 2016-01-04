@@ -1,8 +1,8 @@
-{ stdenv, uglify, stylus }:
+{ stdenv, uglify, stylus, gnused }:
 
 stdenv.mkDerivation {
   name = "jekos";
   src = ./.;
-  buildInputs = [ uglify stylus ];
+  buildInputs = [ uglify stylus gnused ];
   builder = ./builder.sh;
 }

@@ -6,7 +6,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 import Blaze.ByteString.Builder (toByteString)
-import Control.Monad (unless, when)
+import Control.Concurrent (forkIO)
+import Control.Monad (unless, when, void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Either (left)
 import qualified Crypto.BCrypt as BC
@@ -26,17 +27,21 @@ import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import qualified Data.Text.IO as T
 import Data.Time.Clock.POSIX (getPOSIXTime, posixDayLength)
 import GHC.Generics
+import Network.HTTP.Types (hAuthorization, hCookie, status200, status201, status303, status401, status403, status404, hContentType, methodOptions)
+import Network (listenOn)
 import Network.Wai
 import Network.Wai.Middleware.Static (staticPolicy', initCaching, CachingStrategy(..), addBase, policy, (<|>))
-import Network.HTTP.Types (hAuthorization, hCookie, status200, status201, status303, status401, status403, hContentType, methodOptions)
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.WarpTLS
+import Network.Wai.Handler.WebSockets (websocketsApp)
 import qualified Network.WebSockets as WS
+import qualified Network.TLS as TLS
 import Servant
 import System.Directory (doesFileExist)
 import System.Environment (getArgs, getProgName)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr, withFile, IOMode(..))
+import System.IO (hPutStrLn, hPutStr, hPrint, stderr, withFile, IOMode(..))
+import System.Posix.Pty (spawnWithPty, threadWaitReadPty, readPty, writePty)
 import Web.Cookie (SetCookie(..), renderSetCookie, parseCookies)
 
 import qualified Crypto.PubKey.HashDescr as C
@@ -57,7 +62,7 @@ main = do
       domain <- readFile "/var/jekos/domain"
       cache <- initCaching PublicStaticCaching
       authTokenKey <- withFile "/dev/urandom" ReadMode (\ h -> B.hGet h 32)
-      runTLS (pems domain) (setPort 443 defaultSettings) (static cache uiDir (verifyAuth authTokenKey uiDir rootApp))
+      runTLS (pems domain) (setPort 443 defaultSettings) (static cache uiDir (verifyAuth authTokenKey uiDir (upgradeWebsocket (rootApp uiDir))))
     _ -> do
       progName <- getProgName
       hPutStrLn stderr ("Usage: " ++ progName ++ " ui-dir")
@@ -80,6 +85,12 @@ verifyAuth authTokenKey uiDir app request sendResponse = do
                                                           , setCookieSecure = True }))
           sendResponse (responseLBS status303 [("Set-Cookie", cookie), ("Location", "/")] "")
         else authPlease "Invalid Password"
+    ("DELETE", "/authtoken") -> do
+      let cookie = toByteString (renderSetCookie (def { setCookieName = "auth"
+                                                      , setCookieValue = ""
+                                                      , setCookiePath = Just "/"
+                                                      , setCookieMaxAge = Just 0 }))
+      sendResponse (responseLBS status200 [("Set-Cookie", cookie)] "")
     ("OPTIONS", "/password") -> do
       sendResponse (responseLBS status200 (("Allow", "PUT") : corsHeaders) "")
     ("PUT", "/password") -> do
@@ -111,7 +122,11 @@ verifyAuth authTokenKey uiDir app request sendResponse = do
            Just authToken -> do
              valid <- validAuthToken authTokenKey authToken
              if valid
-               then app request sendResponse
+               then case rawPathInfo request of
+                      "/" -> do
+                        mainPage <- BL.readFile (uiDir </> "index.html")
+                        sendResponse (responseLBS status200 [(hContentType, "text/html; charset=utf-8")] mainPage)
+                      _ -> app request sendResponse
                else authPlease "Invalid Auth Cookie"
            _ -> authPlease "Login"
  where sigPlease msg =
@@ -139,7 +154,6 @@ setPassword password = do
     Just hash -> B8.writeFile "/var/jekos/password" hash
 
 validPassword password = do
-  hPutStrLn stderr (show password)
   hash <- B8.readFile "/var/jekos/password"
   return (BC.validatePassword hash password)
 
@@ -171,17 +185,45 @@ publicKeyFromDER bs = case ASN.decodeASN1' ASN.DER bs of
   where
     decodeBitArray = ASN.decodeASN1' ASN.DER . ASN.bitArrayGetData
 
-type RootAPI = Get '[PlainText] Text
-          :<|> "time" :> Get '[PlainText] Text
+upgradeWebsocket :: Middleware
+upgradeWebsocket app request sendResponse =
+  case (requestMethod request, rawPathInfo request, lookup "Upgrade" (requestHeaders request)) of
+    ("GET", "/terminal", Just "websocket") ->
+      case websocketsApp WS.defaultConnectionOptions terminalServer request of
+        Nothing -> sendResponse (responseLBS status404 [] "Not Found")
+        Just r -> sendResponse r
+    _ -> app request sendResponse
+
+-- TODO: Require password to be transmitted to start connection? (extra security)
+terminalServer pending = do
+  conn <- WS.acceptRequest pending
+  WS.forkPingThread conn 30
+  -- TODO: Get shell from /etc/passwd
+  (pty, ph) <- spawnWithPty (Just [("TERM", "xterm")]) False "/run/current-system/sw/bin/bash" [] (80, 24)
+  forkIO (writeToTerm pty conn)
+  writeToSocket pty conn
+ where writeToTerm pty conn = do
+         bs <- WS.receiveData conn
+         hPutStr stderr "received from socket: "
+         hPrint stderr bs
+         writePty pty bs
+         writeToTerm pty conn
+       writeToSocket pty conn = do
+         threadWaitReadPty pty
+         bs <- readPty pty
+         hPutStr stderr "received from pty: "
+         hPrint stderr bs
+         WS.sendTextData conn bs
+         writeToSocket pty conn
+
+type RootAPI = "time" :> Get '[PlainText] Text
 
 rootAPI :: Proxy RootAPI
 rootAPI = Proxy
 
-rootServer :: Server RootAPI
-rootServer = frontPage
-        :<|> time
- where frontPage = return ("" :: Text)
-       time = (T.pack . show . round) `fmap` liftIO getPOSIXTime
+rootServer :: FilePath -> Server RootAPI
+rootServer uiDir = time
+ where time = (T.pack . show . round) `fmap` liftIO getPOSIXTime
 
-rootApp :: Application
-rootApp = serve rootAPI rootServer
+rootApp :: FilePath -> Application
+rootApp = serve rootAPI . rootServer
