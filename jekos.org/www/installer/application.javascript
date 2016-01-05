@@ -58,7 +58,6 @@
           // so we have to rely on a timeout instead.
           var timeout = setTimeout(function () { reject(); }, 30000);
           xhr.onReadyStateChange = function () {
-            console.log('state change', xhr);
             if (xhr.readyState === 4) {
               if (xhr.status === 201) {
                 clearTimeout(timeout);
@@ -69,7 +68,6 @@
             }
           };
           xhr.onload = function () {
-            console.log('onload', xhr);
             if (xhr.status === 201) {
               clearTimeout(timeout);
               resolve();
