@@ -20,5 +20,6 @@ mkDerivation {
     transformers wai wai-cors wai-middleware-static wai-websockets warp
     warp-tls websockets
   ];
-  license = stdenv.lib.licenses.unfree;
+  homepage = "https://github.com/jekor/jekos";
+  license = stdenv.lib.licenses.mit;
 }
